@@ -87,20 +87,14 @@ void PtouchBridge::setup() {
   }
   xEventGroupSetBits(this->events_, CAN_WRITE_BIT);
 
-  esp_err_t error = this->initialize_bluetooth_();
-  if (error != ESP_OK) {
-    this->set_state_("error", esp_err_to_name(error));
-    ESP_LOGE(TAG, "Bluetooth initialization failed: %s", esp_err_to_name(error));
-    this->mark_failed();
-    return;
-  }
-  error = this->start_http_();
+  esp_err_t error = this->start_http_();
   if (error != ESP_OK) {
     this->set_state_("error", esp_err_to_name(error));
     ESP_LOGE(TAG, "HTTP server initialization failed: %s", esp_err_to_name(error));
     this->mark_failed();
     return;
   }
+  this->set_state_("starting", "Waiting for Wi-Fi before starting Bluetooth");
   this->publish_state_();
 }
 
@@ -150,6 +144,22 @@ void PtouchBridge::dump_config() {
 void PtouchBridge::loop() {
   if (this->is_failed())
     return;
+
+  if (!this->bluetooth_initialized_) {
+    wifi_ap_record_t access_point{};
+    if (esp_wifi_sta_get_ap_info(&access_point) != ESP_OK) {
+      this->publish_state_();
+      return;
+    }
+    esp_err_t error = this->initialize_bluetooth_();
+    if (error != ESP_OK) {
+      this->set_state_("error", esp_err_to_name(error));
+      ESP_LOGE(TAG, "Bluetooth initialization failed: %s", esp_err_to_name(error));
+      this->mark_failed();
+      return;
+    }
+    this->bluetooth_initialized_ = true;
+  }
 
   if (this->disconnect_requested_) {
     this->disconnect_requested_ = false;

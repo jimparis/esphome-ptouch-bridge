@@ -167,6 +167,7 @@ class PtouchBridge : public Component {
   bool reconnect_requested_{false};
   bool disconnect_requested_{false};
   bool status_refresh_requested_{false};
+  bool bluetooth_initialized_{false};
 
   std::array<sensor::Sensor *, NUMERIC_SENSOR_COUNT> numeric_sensors_{};
   std::array<text_sensor::TextSensor *, TEXT_SENSOR_COUNT> text_sensors_{};
@@ -177,4 +178,3 @@ class PtouchBridge : public Component {
 
 }  // namespace ptouch_bridge
 }  // namespace esphome
-
