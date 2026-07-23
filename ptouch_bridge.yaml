@@ -1,0 +1,45 @@
+substitutions:
+  device_name: ptouch-bridge
+  friendly_name: P-touch Bridge
+  printer_address: "BC:31:98:A0:63:5F"
+  bridge_http_token: ""
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  project:
+    name: jim.ptouch_bridge
+    version: "1.0"
+  name_add_mac_suffix: true
+  min_version: 2026.6.5
+
+dashboard_import:
+  package_import_url: github://jimparis/esphome-ptouch-bridge/ptouch_bridge.yaml@main
+  import_full_config: false
+
+wifi:
+  ap:
+
+improv_serial:
+
+captive_portal:
+
+api:
+
+ota:
+  - platform: esphome
+
+external_components:
+  - source: github://jimparis/esphome-ptouch-bridge@main
+    refresh: 10min
+    components:
+      - ptouch_bridge
+
+packages:
+  ptouch_bridge:
+    url: https://github.com/jimparis/esphome-ptouch-bridge
+    files:
+      - packages/ptouch_bridge.yaml
+    ref: main
+    refresh: 10min
+

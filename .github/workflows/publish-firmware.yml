@@ -1,0 +1,29 @@
+name: Publish Firmware
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '*.yaml'
+      - 'components/**'
+      - 'packages/**'
+      - 'static/**'
+      - '.github/workflows/publish-firmware.yml'
+      - '.github/workflows/publish-pages.yml'
+      - 'pyproject.toml'
+      - 'uv.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-firmware:
+    name: Build Firmware
+    uses: esphome/workflows/.github/workflows/build.yml@025a1e6255610c498ed590403b7e510b69e474df  # 2026.4.1
+    with:
+      files: |
+        ptouch_bridge.yaml
+      esphome-version: 2026.6.5
+

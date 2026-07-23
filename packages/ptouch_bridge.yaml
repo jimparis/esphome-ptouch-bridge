@@ -1,0 +1,137 @@
+defaults:
+  printer_address: "BC:31:98:A0:63:5F"
+  bridge_http_token: ""
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+    advanced:
+      sram1_as_iram: true
+
+logger:
+
+ptouch_bridge:
+  id: ptouch_bridge_hub
+  printer_address: ${printer_address}
+  http_token: ${bridge_http_token}
+
+binary_sensor:
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: printer_connected
+    name: Printer Connected
+    device_class: connectivity
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: media_loaded
+    name: Media Loaded
+    entity_category: diagnostic
+
+sensor:
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: labels_printed
+    name: Labels Printed
+    icon: mdi:label-multiple
+    state_class: total_increasing
+    accuracy_decimals: 0
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: tape_used
+    name: Tape Used
+    icon: mdi:tape-measure
+    unit_of_measurement: mm
+    state_class: total_increasing
+    accuracy_decimals: 1
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: failed_prints
+    name: Failed Prints
+    icon: mdi:alert-circle-outline
+    state_class: total_increasing
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: bluetooth_connections
+    name: Bluetooth Connections
+    icon: mdi:bluetooth-connect
+    state_class: total_increasing
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: connection_attempts
+    name: Bluetooth Connection Attempts
+    icon: mdi:bluetooth-transfer
+    state_class: total_increasing
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: wifi_signal
+    name: WiFi Signal
+    update_interval: 60s
+    entity_category: diagnostic
+  - platform: uptime
+    name: Uptime
+    entity_category: diagnostic
+
+text_sensor:
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: connection_phase
+    name: Printer Connection Phase
+    icon: mdi:bluetooth
+    entity_category: diagnostic
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: connection_detail
+    name: Printer Connection Detail
+    icon: mdi:information-outline
+    entity_category: diagnostic
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: current_cartridge
+    name: Current Cartridge
+    icon: mdi:label
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: last_cartridge
+    name: Last Detected Cartridge
+    icon: mdi:label-outline
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: last_print_result
+    name: Last Print Result
+    icon: mdi:printer-check
+    entity_category: diagnostic
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: printer_address
+    name: Printer Bluetooth Address
+    icon: mdi:bluetooth
+    entity_category: diagnostic
+  - platform: version
+    name: ESPHome Version
+    entity_category: diagnostic
+
+button:
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: reconnect
+    name: Reconnect Printer
+    icon: mdi:bluetooth-connect
+    entity_category: diagnostic
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: disconnect
+    name: Disconnect Printer
+    icon: mdi:bluetooth-off
+    entity_category: diagnostic
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: refresh_status
+    name: Refresh Printer Status
+    icon: mdi:refresh
+    entity_category: diagnostic
+
