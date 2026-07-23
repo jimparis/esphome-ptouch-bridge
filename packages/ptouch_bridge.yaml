@@ -35,14 +35,14 @@ sensor:
   - platform: ptouch_bridge
     ptouch_bridge_id: ptouch_bridge_hub
     kind: labels_printed
-    name: Labels Printed
+    name: Labels Printed This Boot
     icon: mdi:label-multiple
     state_class: total_increasing
     accuracy_decimals: 0
   - platform: ptouch_bridge
     ptouch_bridge_id: ptouch_bridge_hub
     kind: tape_used
-    name: Tape Used
+    name: Tape Used This Boot
     icon: mdi:tape-measure
     unit_of_measurement: mm
     state_class: total_increasing
