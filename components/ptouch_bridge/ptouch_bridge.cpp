@@ -178,9 +178,11 @@ void PtouchBridge::loop() {
     this->begin_connection_();
   }
 
-  if (this->status_refresh_requested_) {
+  if (this->status_refresh_requested_ && !this->status_refresh_running_ &&
+      uxSemaphoreGetCount(this->transaction_mutex_) > 0) {
     this->status_refresh_requested_ = false;
-    xTaskCreate(
+    this->status_refresh_running_ = true;
+    BaseType_t created = xTaskCreate(
         [](void *argument) {
           auto *self = static_cast<PtouchBridge *>(argument);
           uint8_t frame[STATUS_BYTES];
@@ -200,9 +202,15 @@ void PtouchBridge::loop() {
               self->abort_transaction_();
             }
           }
+          self->status_refresh_running_ = false;
           vTaskDelete(nullptr);
         },
         "ptouch_status", 4096, this, 1, nullptr);
+    if (created != pdPASS) {
+      this->status_refresh_running_ = false;
+      this->status_refresh_requested_ = true;
+      ESP_LOGE(TAG, "Could not start printer status task");
+    }
   }
 
   this->publish_state_();
@@ -412,6 +420,11 @@ void PtouchBridge::spp_callback_(esp_spp_cb_event_t event, esp_spp_cb_param_t *p
         portEXIT_CRITICAL(&self->state_lock_);
         xEventGroupClearBits(self->events_, CONNECT_FAILED_BIT);
         xEventGroupSetBits(self->events_, CONNECTED_BIT | CAN_WRITE_BIT);
+        // A background connection has no browser request to obtain media
+        // information. Queue the same status transaction as the manual
+        // refresh button. If this connection belongs to an existing status
+        // or print transaction, update_status_ clears the queued duplicate.
+        self->status_refresh_requested_ = true;
         ESP_LOGI(TAG, "Printer SPP connection opened");
       } else {
         self->fail_connection_("Could not open printer SPP channel");
@@ -476,6 +489,7 @@ std::string PtouchBridge::cartridge_description_(const uint8_t frame[STATUS_BYTE
 void PtouchBridge::update_status_(const uint8_t frame[STATUS_BYTES]) {
   if (std::memcmp(frame, "\x80\x20" "B0", 4) != 0)
     return;
+  this->status_refresh_requested_ = false;
   std::string cartridge = cartridge_description_(frame);
   bool loaded = (frame[8] & 0x01) == 0 && frame[10] != 0;
   portENTER_CRITICAL(&this->state_lock_);

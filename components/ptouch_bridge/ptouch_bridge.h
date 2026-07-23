@@ -166,7 +166,8 @@ class PtouchBridge : public Component {
   uint32_t last_connect_attempt_ms_{0};
   bool reconnect_requested_{false};
   bool disconnect_requested_{false};
-  bool status_refresh_requested_{false};
+  volatile bool status_refresh_requested_{false};
+  volatile bool status_refresh_running_{false};
   bool bluetooth_initialized_{false};
 
   std::array<sensor::Sensor *, NUMERIC_SENSOR_COUNT> numeric_sensors_{};
