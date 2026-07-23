@@ -14,6 +14,7 @@ KINDS = {
     "last_cartridge": 3,
     "last_print_result": 4,
     "printer_address": 5,
+    "last_recovery_reason": 6,
 }
 
 CONFIG_SCHEMA = text_sensor.text_sensor_schema().extend(
@@ -28,4 +29,3 @@ async def to_code(config):
     parent = await cg.get_variable(config[CONF_PTOUCH_BRIDGE_ID])
     var = await text_sensor.new_text_sensor(config)
     cg.add(parent.set_text_sensor(config[CONF_KIND], var))
-

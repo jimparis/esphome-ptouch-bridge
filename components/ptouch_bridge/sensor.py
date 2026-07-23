@@ -13,6 +13,7 @@ KINDS = {
     "failed_prints": 2,
     "bluetooth_connections": 3,
     "connection_attempts": 4,
+    "bluetooth_recoveries": 5,
 }
 
 CONFIG_SCHEMA = sensor.sensor_schema().extend(
@@ -27,4 +28,3 @@ async def to_code(config):
     parent = await cg.get_variable(config[CONF_PTOUCH_BRIDGE_ID])
     var = await sensor.new_sensor(config)
     cg.add(parent.set_numeric_sensor(config[CONF_KIND], var))
-

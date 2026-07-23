@@ -27,7 +27,8 @@ enum NumericSensorKind : uint8_t {
   FAILED_PRINTS = 2,
   BLUETOOTH_CONNECTIONS = 3,
   CONNECTION_ATTEMPTS = 4,
-  NUMERIC_SENSOR_COUNT = 5,
+  BLUETOOTH_RECOVERIES = 5,
+  NUMERIC_SENSOR_COUNT = 6,
 };
 
 enum TextSensorKind : uint8_t {
@@ -37,7 +38,8 @@ enum TextSensorKind : uint8_t {
   LAST_CARTRIDGE = 3,
   LAST_PRINT_RESULT = 4,
   PRINTER_ADDRESS = 5,
-  TEXT_SENSOR_COUNT = 6,
+  LAST_RECOVERY_REASON = 6,
+  TEXT_SENSOR_COUNT = 7,
 };
 
 enum BinarySensorKind : uint8_t {
@@ -86,6 +88,10 @@ class PtouchBridge : public Component {
   static constexpr size_t MAX_PAGE_BYTES = 300 * 1024;
   static constexpr size_t WRITE_CHUNK = 512;
   static constexpr size_t RX_BUFFER_SIZE = 2048;
+  static constexpr uint32_t WIFI_SETTLE_MS = 3000;
+  static constexpr uint32_t CONNECT_TIMEOUT_MS = 15000;
+  static constexpr uint32_t SPP_RESET_TIMEOUT_MS = 10000;
+  static constexpr uint32_t SPP_REINIT_DELAY_MS = 1000;
 
   static constexpr EventBits_t CONNECTED_BIT = BIT0;
   static constexpr EventBits_t CONNECT_FAILED_BIT = BIT1;
@@ -98,6 +104,7 @@ class PtouchBridge : public Component {
     char current_cartridge[64]{};
     char last_cartridge[64]{};
     char last_print_result[96]{};
+    char last_recovery_reason[96]{};
     bool paired{false};
     bool connected{false};
     bool media_loaded{false};
@@ -108,6 +115,7 @@ class PtouchBridge : public Component {
     uint32_t failed_prints{0};
     uint32_t bluetooth_connections{0};
     uint32_t connection_attempts{0};
+    uint32_t bluetooth_recoveries{0};
     uint32_t revision{0};
   };
 
@@ -116,6 +124,9 @@ class PtouchBridge : public Component {
   void fail_connection_(const char *detail);
   bool parse_address_();
   esp_err_t initialize_bluetooth_();
+  esp_err_t initialize_spp_();
+  void request_spp_reset_(const char *detail);
+  void service_spp_reset_(uint32_t now);
   esp_err_t ensure_connected_(uint32_t timeout_ms);
   esp_err_t begin_transaction_(uint32_t timeout_ms);
   esp_err_t send_(const uint8_t *data, size_t length, uint32_t timeout_ms);
@@ -163,12 +174,19 @@ class PtouchBridge : public Component {
   volatile bool connect_in_progress_{false};
   State state_{};
   uint32_t published_revision_{UINT32_MAX};
+  uint32_t wifi_connected_since_ms_{0};
   uint32_t last_connect_attempt_ms_{0};
+  uint32_t spp_reset_started_ms_{0};
+  uint32_t spp_reinit_after_ms_{0};
   bool reconnect_requested_{false};
   bool disconnect_requested_{false};
   volatile bool status_refresh_requested_{false};
   volatile bool status_refresh_running_{false};
   bool bluetooth_initialized_{false};
+  volatile bool spp_ready_{false};
+  volatile bool spp_reset_requested_{false};
+  volatile bool spp_resetting_{false};
+  volatile bool spp_uninitialized_{false};
 
   std::array<sensor::Sensor *, NUMERIC_SENSOR_COUNT> numeric_sensors_{};
   std::array<text_sensor::TextSensor *, TEXT_SENSOR_COUNT> text_sensors_{};

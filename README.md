@@ -66,8 +66,9 @@ the shared OTA password remain in the Device Builder's `secrets.yaml`.
 ## Diagnostics and persistence
 
 Home Assistant receives printer connection state, current and last detected
-cartridge, last print result, Bluetooth attempt/connection counts, confirmed
-label count, and estimated tape usage. Counters use `total_increasing` state.
+cartridge, last print result, Bluetooth attempt/connection/recovery counts, the
+last Bluetooth recovery reason, confirmed label count, and estimated tape
+usage. Counters use `total_increasing` state.
 
 These counters deliberately reset whenever the ESP32 boots; the component never
 writes them to ESP32 NVS. Home Assistant should receive each confirmed print
@@ -76,6 +77,13 @@ before shutdown and retain long-term statistics across those resets.
 Tape usage is calculated from the raster length plus the configured Brother
 feed margins. It is an estimate of tape advanced for completed labels, not a
 measurement of the remaining cassette.
+
+Wi-Fi modem power saving is disabled because this bridge is latency-sensitive
+and shares the ESP32 radio with Bluetooth Classic. After obtaining an IP
+address, firmware gives Wi-Fi three seconds to settle before initializing
+Bluetooth. A Bluetooth connection attempt that receives no completion callback
+within 15 seconds resets and reinitializes SPP; if SPP teardown itself hangs,
+ESPHome performs a safe reboot.
 
 ## HTTP API
 

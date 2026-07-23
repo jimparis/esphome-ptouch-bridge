@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "cJSON.h"
+#include "esphome/components/network/util.h"
 #include "esphome/core/application.h"
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
@@ -123,9 +124,15 @@ esp_err_t PtouchBridge::initialize_bluetooth_() {
   esp_bt_pin_code_t pin = {};
   if ((error = esp_bt_gap_set_pin(ESP_BT_PIN_TYPE_VARIABLE, 0, pin)) != ESP_OK)
     return error;
-  if ((error = esp_spp_register_callback(spp_callback_)) != ESP_OK)
-    return error;
+  return this->initialize_spp_();
+}
 
+esp_err_t PtouchBridge::initialize_spp_() {
+  esp_err_t error = esp_spp_register_callback(spp_callback_);
+  if (error != ESP_OK)
+    return error;
+  this->spp_ready_ = false;
+  this->spp_uninitialized_ = false;
   esp_spp_cfg_t config = {
       .mode = ESP_SPP_MODE_CB,
       .enable_l2cap_ertm = true,
@@ -145,9 +152,20 @@ void PtouchBridge::loop() {
   if (this->is_failed())
     return;
 
+  const uint32_t now = millis();
   if (!this->bluetooth_initialized_) {
-    wifi_ap_record_t access_point{};
-    if (esp_wifi_sta_get_ap_info(&access_point) != ESP_OK) {
+    if (!network::is_connected()) {
+      this->wifi_connected_since_ms_ = 0;
+      this->publish_state_();
+      return;
+    }
+    if (this->wifi_connected_since_ms_ == 0) {
+      this->wifi_connected_since_ms_ = now;
+      this->set_state_("starting", "Waiting for Wi-Fi to settle");
+      this->publish_state_();
+      return;
+    }
+    if (now - this->wifi_connected_since_ms_ < WIFI_SETTLE_MS) {
       this->publish_state_();
       return;
     }
@@ -159,6 +177,18 @@ void PtouchBridge::loop() {
       return;
     }
     this->bluetooth_initialized_ = true;
+    ESP_LOGI(TAG, "Bluetooth initialized after Wi-Fi was stable for %u ms", WIFI_SETTLE_MS);
+  }
+
+  if (this->spp_reset_requested_ || this->spp_resetting_ || this->spp_reinit_after_ms_ != 0) {
+    this->service_spp_reset_(now);
+    this->publish_state_();
+    return;
+  }
+
+  if (!this->spp_ready_) {
+    this->publish_state_();
+    return;
   }
 
   if (this->disconnect_requested_) {
@@ -171,8 +201,13 @@ void PtouchBridge::loop() {
     this->last_connect_attempt_ms_ = 0;
   }
 
-  const uint32_t now = millis();
   EventBits_t bits = xEventGroupGetBits(this->events_);
+  if (this->connect_in_progress_ && now - this->last_connect_attempt_ms_ >= CONNECT_TIMEOUT_MS) {
+    this->request_spp_reset_("Bluetooth connection attempt timed out");
+    this->service_spp_reset_(now);
+    this->publish_state_();
+    return;
+  }
   if (!(bits & CONNECTED_BIT) && !this->connect_in_progress_ &&
       (this->last_connect_attempt_ms_ == 0 || now - this->last_connect_attempt_ms_ >= 5000)) {
     this->begin_connection_();
@@ -214,6 +249,65 @@ void PtouchBridge::loop() {
   }
 
   this->publish_state_();
+}
+
+void PtouchBridge::request_spp_reset_(const char *detail) {
+  if (this->spp_reset_requested_ || this->spp_resetting_)
+    return;
+  ESP_LOGW(TAG, "%s; resetting SPP", detail);
+  this->fail_connection_(detail);
+  portENTER_CRITICAL(&this->state_lock_);
+  this->state_.bluetooth_recoveries++;
+  strlcpy(this->state_.last_recovery_reason, detail, sizeof(this->state_.last_recovery_reason));
+  this->state_.revision++;
+  portEXIT_CRITICAL(&this->state_lock_);
+  this->spp_reset_requested_ = true;
+}
+
+void PtouchBridge::service_spp_reset_(uint32_t now) {
+  if (this->spp_reset_requested_ && !this->spp_resetting_) {
+    this->spp_reset_requested_ = false;
+    this->spp_resetting_ = true;
+    this->spp_ready_ = false;
+    this->spp_uninitialized_ = false;
+    this->spp_reset_started_ms_ = now;
+    this->set_state_("recovering", "Resetting Bluetooth SPP");
+    esp_err_t error = esp_spp_deinit();
+    if (error != ESP_OK) {
+      ESP_LOGE(TAG, "Could not deinitialize SPP: %s; rebooting", esp_err_to_name(error));
+      App.safe_reboot();
+    }
+    return;
+  }
+
+  if (this->spp_resetting_) {
+    if (!this->spp_uninitialized_) {
+      if (now - this->spp_reset_started_ms_ >= SPP_RESET_TIMEOUT_MS) {
+        ESP_LOGE(TAG, "SPP reset timed out; rebooting");
+        App.safe_reboot();
+      }
+      return;
+    }
+    this->spp_resetting_ = false;
+    this->spp_uninitialized_ = false;
+    this->spp_reinit_after_ms_ = now + SPP_REINIT_DELAY_MS;
+    this->set_state_("recovering", "Restarting Bluetooth SPP");
+    ESP_LOGI(TAG, "SPP deinitialized; scheduling reinitialization");
+    return;
+  }
+
+  if (this->spp_reinit_after_ms_ != 0 &&
+      static_cast<int32_t>(now - this->spp_reinit_after_ms_) >= 0) {
+    esp_err_t error = this->initialize_spp_();
+    if (error == ESP_OK) {
+      this->spp_reinit_after_ms_ = 0;
+      this->set_state_("recovering", "Waiting for Bluetooth SPP");
+      ESP_LOGI(TAG, "SPP reinitialization requested");
+    } else {
+      this->spp_reinit_after_ms_ = now + 5000;
+      ESP_LOGE(TAG, "Could not reinitialize SPP: %s; retrying", esp_err_to_name(error));
+    }
+  }
 }
 
 void PtouchBridge::request_reconnect() { this->reconnect_requested_ = true; }
@@ -274,7 +368,7 @@ esp_err_t PtouchBridge::ensure_connected_(uint32_t timeout_ms) {
   if (result & CONNECTED_BIT)
     return ESP_OK;
   if (!(result & CONNECT_FAILED_BIT)) {
-    this->fail_connection_("Timed out connecting to Bluetooth printer");
+    this->request_spp_reset_("Timed out connecting to Bluetooth printer");
     return ESP_ERR_TIMEOUT;
   }
   return ESP_FAIL;
@@ -343,6 +437,10 @@ void PtouchBridge::abort_transaction_() {
 
 void PtouchBridge::disconnect_() {
   uint32_t handle = this->spp_handle_;
+  if (handle == 0 && this->connect_in_progress_) {
+    this->request_spp_reset_("Bluetooth connection cancelled");
+    return;
+  }
   this->spp_handle_ = 0;
   this->connect_in_progress_ = false;
   this->fail_connection_("Bluetooth printer disconnected");
@@ -388,26 +486,43 @@ void PtouchBridge::spp_callback_(esp_spp_cb_event_t event, esp_spp_cb_param_t *p
   switch (event) {
     case ESP_SPP_INIT_EVT:
       if (param->init.status == ESP_SPP_SUCCESS) {
+        self->spp_ready_ = true;
         esp_bt_gap_set_device_name(App.get_name().c_str());
         esp_bt_gap_set_scan_mode(ESP_BT_NON_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
         self->set_state_("disconnected", "Waiting for printer");
+        ESP_LOGI(TAG, "Bluetooth SPP initialized");
       } else {
         self->fail_connection_("Bluetooth SPP initialization failed");
       }
       break;
+    case ESP_SPP_UNINIT_EVT:
+      self->spp_ready_ = false;
+      self->spp_uninitialized_ = true;
+      ESP_LOGI(TAG, "Bluetooth SPP uninitialized: %d", param->uninit.status);
+      break;
     case ESP_SPP_DISCOVERY_COMP_EVT:
+      if (self->spp_reset_requested_ || self->spp_resetting_)
+        break;
       if (param->disc_comp.status == ESP_SPP_SUCCESS && param->disc_comp.scn_num > 0) {
         self->set_state_("connecting", "Opening printer SPP channel");
         esp_err_t error = esp_spp_connect(ESP_SPP_SEC_AUTHENTICATE, ESP_SPP_ROLE_MASTER, param->disc_comp.scn[0],
                                           self->printer_address_);
         if (error != ESP_OK)
-          self->fail_connection_(esp_err_to_name(error));
+          self->request_spp_reset_(esp_err_to_name(error));
       } else {
         self->fail_connection_("Printer SPP service was not found");
       }
       break;
+    case ESP_SPP_CL_INIT_EVT:
+      ESP_LOGI(TAG, "SPP client initiation: status=%d handle=%lu", param->cl_init.status,
+               static_cast<unsigned long>(param->cl_init.handle));
+      if (param->cl_init.status != ESP_SPP_SUCCESS)
+        self->request_spp_reset_("Could not initiate printer SPP connection");
+      break;
     case ESP_SPP_OPEN_EVT:
       self->connect_in_progress_ = false;
+      if (self->spp_reset_requested_ || self->spp_resetting_)
+        break;
       if (param->open.status == ESP_SPP_SUCCESS) {
         self->spp_handle_ = param->open.handle;
         portENTER_CRITICAL(&self->state_lock_);
@@ -427,12 +542,13 @@ void PtouchBridge::spp_callback_(esp_spp_cb_event_t event, esp_spp_cb_param_t *p
         self->status_refresh_requested_ = true;
         ESP_LOGI(TAG, "Printer SPP connection opened");
       } else {
-        self->fail_connection_("Could not open printer SPP channel");
+        self->request_spp_reset_("Could not open printer SPP channel");
       }
       break;
     case ESP_SPP_CLOSE_EVT:
       self->spp_handle_ = 0;
-      self->fail_connection_("Bluetooth printer disconnected");
+      if (!self->spp_resetting_)
+        self->fail_connection_("Bluetooth printer disconnected");
       break;
     case ESP_SPP_DATA_IND_EVT:
       if (xStreamBufferSend(self->receive_stream_, param->data_ind.data, param->data_ind.len, 0) !=
@@ -538,6 +654,7 @@ void PtouchBridge::publish_state_() {
       static_cast<float>(snapshot.failed_prints),
       static_cast<float>(snapshot.bluetooth_connections),
       static_cast<float>(snapshot.connection_attempts),
+      static_cast<float>(snapshot.bluetooth_recoveries),
   };
   for (size_t i = 0; i < this->numeric_sensors_.size(); i++)
     if (this->numeric_sensors_[i] != nullptr)
@@ -550,6 +667,7 @@ void PtouchBridge::publish_state_() {
       snapshot.last_cartridge[0] ? snapshot.last_cartridge : "Unknown",
       snapshot.last_print_result,
       this->printer_address_text_.c_str(),
+      snapshot.last_recovery_reason[0] ? snapshot.last_recovery_reason : "None",
   };
   for (size_t i = 0; i < this->text_sensors_.size(); i++)
     if (this->text_sensors_[i] != nullptr)

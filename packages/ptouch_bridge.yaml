@@ -9,6 +9,9 @@ esp32:
     advanced:
       sram1_as_iram: true
 
+wifi:
+  power_save_mode: none
+
 logger:
 
 ptouch_bridge:
@@ -68,6 +71,14 @@ sensor:
     state_class: total_increasing
     accuracy_decimals: 0
     entity_category: diagnostic
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: bluetooth_recoveries
+    name: Bluetooth Recoveries
+    icon: mdi:bluetooth-settings
+    state_class: total_increasing
+    accuracy_decimals: 0
+    entity_category: diagnostic
   - platform: wifi_signal
     name: WiFi Signal
     update_interval: 60s
@@ -111,6 +122,12 @@ text_sensor:
     name: Printer Bluetooth Address
     icon: mdi:bluetooth
     entity_category: diagnostic
+  - platform: ptouch_bridge
+    ptouch_bridge_id: ptouch_bridge_hub
+    kind: last_recovery_reason
+    name: Last Bluetooth Recovery Reason
+    icon: mdi:bluetooth-audio
+    entity_category: diagnostic
   - platform: version
     name: ESPHome Version
     entity_category: diagnostic
@@ -134,4 +151,3 @@ button:
     name: Refresh Printer Status
     icon: mdi:refresh
     entity_category: diagnostic
-
