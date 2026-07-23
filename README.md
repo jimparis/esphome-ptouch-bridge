@@ -39,7 +39,10 @@ packages:
   ptouch_bridge:
     url: https://github.com/jimparis/esphome-ptouch-bridge
     files:
-      - packages/ptouch_bridge.yaml
+      - path: packages/ptouch_bridge.yaml
+        vars:
+          printer_address: ${printer_address}
+          bridge_http_token: ${bridge_http_token}
     ref: main
 
 external_components:
@@ -86,4 +89,3 @@ All routes accept `Authorization: Bearer TOKEN` when `http_token` is nonempty:
 The page route accepts a Brother raster command stream. The label server also
 sends `X-Ptouch-Tape-Length-Dots`, allowing the bridge to publish tape usage
 only after the printer reports completion.
-

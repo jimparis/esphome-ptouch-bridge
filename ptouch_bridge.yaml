@@ -39,7 +39,9 @@ packages:
   ptouch_bridge:
     url: https://github.com/jimparis/esphome-ptouch-bridge
     files:
-      - packages/ptouch_bridge.yaml
+      - path: packages/ptouch_bridge.yaml
+        vars:
+          printer_address: ${printer_address}
+          bridge_http_token: ${bridge_http_token}
     ref: main
     refresh: 10min
-
